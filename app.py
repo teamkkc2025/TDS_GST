@@ -4,7 +4,7 @@ from streamlit.components.v1 import html
 
 # Path to logo
 ASSETS_DIR = Path('./main')
-logo_path = 'kkc logo.png'
+logo_path = 'kkclogo.png'
 
 def main():
     st.set_page_config(page_title="Tool Links Dashboard", layout="wide")
