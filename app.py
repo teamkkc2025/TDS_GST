@@ -20,7 +20,7 @@ def main():
 
     # Define links
     tool_1_url = 'https://tdsgst-gst.streamlit.app/'
-    tool_2_url = 'https://challan-data-extraction-tool-jr9by5jhfixgwlw8ftexpr.streamlit.app/'
+    tool_2_url = 'https://tdsgst-tds.streamlit.app/'
 
     # Display the links as styled cards
     col1, col2 = st.columns(2)
