@@ -23,7 +23,7 @@ else:
 # After the logo display code in the sidebar section
 
 # Add User Manual download button below the logo
-manual_path = Path(__file__).parent /
+manual_path = Path(__file__).parent /"GST_Extractor_User_Manual.pdf"
 if manual_path.exists():
     with open(manual_path, "rb") as manual_file:
         st.sidebar.download_button(
