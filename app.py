@@ -19,7 +19,7 @@ def main():
     st.write('Explore the tools below:')
 
     # Define links
-    tool_1_url = 'https://akshayraghav0804-gstr-gst-ppqoxn.streamlit.app/'
+    tool_1_url = 'https://tdsgst-gst.streamlit.app/'
     tool_2_url = 'https://challan-data-extraction-tool-jr9by5jhfixgwlw8ftexpr.streamlit.app/'
 
     # Display the links as styled cards
