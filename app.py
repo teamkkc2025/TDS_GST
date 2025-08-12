@@ -3,17 +3,15 @@ from pathlib import Path
 from streamlit.components.v1 import html
 
 # Path to logo
-ASSETS_DIR = Path('./main')
-logo_path = 'kkclogo.png'
+logo_path = Path(__file__).parent / "kkc logo.png"
 
 def main():
     st.set_page_config(page_title="Tool Links Dashboard", layout="wide")
 
-    # Display logo at the top
     if logo_path.exists():
         st.image(str(logo_path), width=375)
     else:
-        st.warning("Logo file not found. Please place 'kkc logo.png' in the assets directory.")
+        st.warning(f"Logo file not found: {logo_path}")
 
     st.title('Welcome to KKC & Associates LLP Automation Tools')
     st.write('Explore the tools below:')
