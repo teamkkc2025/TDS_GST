@@ -3,7 +3,7 @@ from pathlib import Path
 from streamlit.components.v1 import html
 
 # Path to logo
-ASSETS_DIR = Path('./assets')
+ASSETS_DIR = Path('./main')
 logo_path = 'kkc logo.png'
 
 def main():
