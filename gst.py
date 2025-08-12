@@ -23,7 +23,7 @@ else:
 # After the logo display code in the sidebar section
 
 # Add User Manual download button below the logo
-manual_path = ASSETS_DIR / "User Manual.pdf"
+manual_path = Path(__file__).parent /
 if manual_path.exists():
     with open(manual_path, "rb") as manual_file:
         st.sidebar.download_button(
