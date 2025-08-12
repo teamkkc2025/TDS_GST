@@ -303,14 +303,14 @@ else:
     st.sidebar.warning("Logo file not found. Please place 'kkc logo.png' in the assets directory.")
 
 # Add user manual link in the sidebar
-manual_path = ASSETS_DIR / "KKC.pdf"
+manual_path = Path(__file__).parent /"TDS_Extractor_User_Manual.pdf"
 if manual_path.exists():
     with open(manual_path, "rb") as pdf_file:
         pdf_bytes = pdf_file.read()
     st.sidebar.download_button(
         label="📄 Download User Manual",
         data=pdf_bytes,
-        file_name="KKC.pdf",
+        file_name="TDS_Extractor_User_Manual.pdf",
         mime="application/pdf"
     )
 else:
