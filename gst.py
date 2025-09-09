@@ -15,7 +15,6 @@ ASSETS_DIR = Path("assets")
 ASSETS_DIR.mkdir(exist_ok=True)
  
 # Add logo to the sidebar
-
 logo_path = Path(__file__).parent / "kkc logo.png"
 if logo_path.exists():
     st.sidebar.image(str(logo_path), width=275)
@@ -169,7 +168,7 @@ def extract_general_details(text):
         match = re.search(pattern, text)
         return match.group(1).strip() if match else None
    
-    gstin = safe_extract(r"GSTIN\s+([A-Z0-9]+)", text)
+    gstin = safe_extract(r"GSTIN(?:\s+of\s+the\s+supplier)?\s+([A-Z0-9]+)", text)
     state = get_state_from_gstin(gstin)
     
     return {
@@ -199,162 +198,373 @@ def extract_table_3_1(pdf):
    
     return pd.DataFrame(columns=expected_columns)
 
-def extract_table_4(pdf):
+def extract_numbers_from_line(line):
     """
-    Extract Table 4 - Eligible ITC
-    Returns structured data matching the exact format shown in the artifact
+    Extract numeric values from a line, handling GSTR-3B number formats
     """
-    expected_rows = [
-        ("A. ITC Available (whether in full or part)", "section_header"),
-        ("(1) Import of goods", "data_row"),
-        ("(2) Import of services", "data_row"),
-        ("(3) Inward supplies liable to reverse charge (other than 1 & 2 above)", "data_row"),
-        ("(4) Inward supplies from ISD", "data_row"),
-        ("(5) All other ITC", "data_row"),
-        ("B. ITC Reversed", "section_header"),
-        ("(1) As per rules 38,42 & 43 of CGST Rules and section 17(5)", "data_row"),
-        ("(2) Others", "data_row"),
-        ("C. Net ITC available (A-B)", "section_header"),
-        ("D. Other Details", "section_header"),
-        ("(1) ITC reclaimed which was reversed under Table 4(B)(2) in earlier tax period", "data_row"),
-        ("(2) Ineligible ITC under section 16(4) & ITC restricted due to PoS rules", "data_row")
+    # Remove common non-numeric characters but preserve decimals and commas
+    clean_line = re.sub(r'[^\d\s,\.]', ' ', line)
+    
+    # Find all number patterns
+    patterns = [
+        r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',  # Numbers with commas like 42,390.00
+        r'(\d+\.\d{2})',  # Decimal numbers like 42390.00
+        r'(\d+)'  # Plain integers
     ]
     
-    table_4_data = []
-    value_map = {}
-    table_started = False
-    
-    for page in pdf.pages:
-        text = page.extract_text()
-        tables = page.extract_tables()
-        
-        if "4. Eligible ITC" in text or "Eligible ITC" in text:
-            table_started = True
-        
-        if table_started:
-            for table in tables:
-                if not table:
+    numbers = []
+    for pattern in patterns:
+        matches = re.findall(pattern, clean_line)
+        if matches:
+            for match in matches:
+                try:
+                    # Clean and convert
+                    clean_num = match.replace(',', '')
+                    num_val = float(clean_num)
+                    numbers.append(num_val)
+                except ValueError:
                     continue
-                
-                for row in table:
-                    if not row or len(row) < 4:
-                        continue
-                    
-                    row = [str(cell).strip() if cell is not None else '' for cell in row]
-                    row_text = row[0]
-                    
-                    if "Details" in row_text or "Integrated" in row_text:
-                        continue
-                    
+            break  # Use the first pattern that gives us results
+    
+    return numbers
+
+def parse_table_4_data(table_text, full_text):
+    """
+    Parse Table 4 data based on the actual GSTR-3B structure
+    """
+    extracted_data = {}
+    
+    # Define patterns and known values based on the document structure
+    patterns = {
+        "(5) All other ITC": {
+            "patterns": [
+                r"\(5\)\s+All other ITC\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
+                r"All other ITC\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)"
+            ]
+        },
+        "(2) Others": {
+            "patterns": [
+                r"\(2\)\s+Others\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
+                r"B\.\s+ITC Reversed.*?\(2\)\s+Others\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)"
+            ]
+        },
+        "C. Net ITC available (A-B)": {
+            "patterns": [
+                r"C\.\s+Net ITC available \(A-B\)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
+                r"Net ITC available.*?([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)"
+            ]
+        },
+        "(1) ITC reclaimed which was reversed under Table 4(B)(2) in earlier tax period": {
+            "patterns": [
+                r"\(1\)\s+ITC reclaimed.*?earlier tax period\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
+                r"ITC reclaimed.*?([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)"
+            ]
+        }
+    }
+    
+    # Try to extract using patterns first
+    for key, config in patterns.items():
+        found = False
+        for pattern in config["patterns"]:
+            match = re.search(pattern, full_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
                     values = []
-                    for cell in row[1:5]:
-                        try:
-                            value = clean_numeric_value(cell)
-                            values.append(value)
-                        except:
-                            values.append(0.0)
-                    
-                    while len(values) < 4:
-                        values.append(0.0)
-                    
-                    for expected_row, row_type in expected_rows:
-                        if expected_row.lower().replace(" ", "").replace("(", "").replace(")", "") in row_text.lower().replace(" ", "").replace("(", "").replace(")", ""):
-                            value_map[expected_row] = values
-                            break
-            
-            if "5." in text or "Details of amount paid" in text or "Payment of tax" in text:
-                break
+                    for i in range(1, 5):
+                        val_str = match.group(i).replace(',', '')
+                        values.append(float(val_str))
+                    extracted_data[key] = values
+                    found = True
+                    break
+                except (ValueError, IndexError):
+                    continue
+        
+        # If not found through patterns, try line-by-line extraction
+        if not found:
+            lines = full_text.split('\n')
+            for line in lines:
+                if key == "(5) All other ITC" and "All other ITC" in line:
+                    numbers = extract_numbers_from_line(line)
+                    if len(numbers) >= 4:
+                        extracted_data[key] = numbers[:4]
+                        break
+                elif key == "(2) Others" and "(2)" in line and "Others" in line:
+                    numbers = extract_numbers_from_line(line)
+                    if len(numbers) >= 4:
+                        extracted_data[key] = numbers[:4]
+                        break
+                elif key == "C. Net ITC available (A-B)" and "Net ITC available" in line:
+                    numbers = extract_numbers_from_line(line)
+                    if len(numbers) >= 4:
+                        extracted_data[key] = numbers[:4]
+                        break
+                elif key.startswith("(1) ITC reclaimed") and "ITC reclaimed" in line:
+                    numbers = extract_numbers_from_line(line)
+                    if len(numbers) >= 4:
+                        extracted_data[key] = numbers[:4]
+                        break
     
-    # Build the final data structure
-    for expected_row, row_type in expected_rows:
-        if expected_row in value_map:
-            table_4_data.append({
-                "Details": expected_row,
-                "Integrated tax": value_map[expected_row][0],
-                "Central tax": value_map[expected_row][1],
-                "State/UT tax": value_map[expected_row][2],
-                "Cess": value_map[expected_row][3]
-            })
+    # For items not found, set to zero
+    remaining_items = [
+        "(1) Import of goods",
+        "(2) Import of services", 
+        "(3) Inward supplies liable to reverse charge (other than 1 & 2 above)",
+        "(4) Inward supplies from ISD",
+        "(1) As per rules 38,42 & 43 of CGST Rules and section 17(5)",
+        "(2) Ineligible ITC under section 16(4) & ITC restricted due to PoS rules"
+    ]
+    
+    for item in remaining_items:
+        if item not in extracted_data:
+            extracted_data[item] = [0.0, 0.0, 0.0, 0.0]
+    
+    return extracted_data
+
+def extract_table_4(pdf):
+    """
+    Improved Table 4 extraction that correctly maps data from GSTR-3B
+    """
+    # Initialize the result structure with correct GSTR-3B Table 4 categories
+    table_4_structure = [
+        "(1) Import of goods",
+        "(2) Import of services", 
+        "(3) Inward supplies liable to reverse charge (other than 1 & 2 above)",
+        "(4) Inward supplies from ISD",
+        "(5) All other ITC",
+        "(1) As per rules 38,42 & 43 of CGST Rules and section 17(5)",
+        "(2) Others",
+        "C. Net ITC available (A-B)",
+        "(1) ITC reclaimed which was reversed under Table 4(B)(2) in earlier tax period",
+        "(2) Ineligible ITC under section 16(4) & ITC restricted due to PoS rules"
+    ]
+    
+    # Extract all text from PDF
+    full_text = ""
+    for page in pdf.pages:
+        page_text = page.extract_text()
+        if page_text:
+            full_text += page_text + "\n"
+    
+    # Find Table 4 section
+    table_4_start = full_text.find("4. Eligible ITC")
+    if table_4_start == -1:
+        table_4_start = full_text.find("Eligible ITC")
+    
+    table_4_end = full_text.find("5.", table_4_start)
+    if table_4_end == -1:
+        table_4_end = full_text.find("Values of exempt", table_4_start)
+    if table_4_end == -1:
+        table_4_end = len(full_text)
+    
+    # Extract Table 4 text section
+    table_4_text = full_text[table_4_start:table_4_end] if table_4_start != -1 else ""
+    
+    # Parse the actual data from document structure
+    extracted_data = parse_table_4_data(table_4_text, full_text)
+    
+    # Build result DataFrame
+    table_4_result = []
+    for row_desc in table_4_structure:
+        if row_desc in extracted_data:
+            values = extracted_data[row_desc]
         else:
-            table_4_data.append({
-                "Details": expected_row,
-                "Integrated tax": 0.0,
-                "Central tax": 0.0,
-                "State/UT tax": 0.0,
-                "Cess": 0.0
-            })
+            values = [0.0, 0.0, 0.0, 0.0]  # Default: IGST, CGST, SGST, Cess
+        
+        table_4_result.append({
+            "Details": row_desc,
+            "Integrated tax": values[0] if len(values) > 0 else 0.0,
+            "Central tax": values[1] if len(values) > 1 else 0.0,
+            "State/UT tax": values[2] if len(values) > 2 else 0.0,
+            "Cess": values[3] if len(values) > 3 else 0.0
+        })
     
-    return pd.DataFrame(table_4_data)
+    return pd.DataFrame(table_4_result)
 
 def extract_table_6_1(pdf):
     """
-    Extract Table 6.1 - Payment of tax
-    Returns structured data matching the exact format shown in the artifact
+    Improved extraction for Table 6.1 - Payment of tax
     """
     table_6_1_data = []
     
-    # Define expected structure for Table 6.1
-    expected_structure = [
-        # (A) Other than reverse charge
-        ("Integrated tax", "other_than_reverse"),
-        ("Central tax", "other_than_reverse"), 
-        ("State/UT tax", "other_than_reverse"),
-        ("Cess", "other_than_reverse"),
-        # (B) Reverse charge
-        ("Integrated tax", "reverse_charge"),
-        ("Central tax", "reverse_charge"),
-        ("State/UT tax", "reverse_charge"),
-        ("Cess", "reverse_charge")
-    ]
-    
+    # Method 1: Try structured table extraction
     for page in pdf.pages:
         text = page.extract_text()
-        if "6.1" in text and "Payment of tax" in text:
-            tables = page.extract_tables()
+        if not text or "6.1" not in text or "Payment of tax" not in text:
+            continue
+        
+        tables = page.extract_tables()
+        for table in tables:
+            if not table:
+                continue
             
-            for table in tables:
-                if not table or len(table) < 2:
+            # Look for payment table structure
+            for row_idx, row in enumerate(table):
+                if not row:
                     continue
                 
-                # Look for payment of tax table
-                for i, row in enumerate(table):
-                    if not row:
-                        continue
-                    
-                    cleaned_row = [str(cell).strip() if cell else "" for cell in row]
-                    
-                    # Check if this is a tax type row
-                    if len(cleaned_row) >= 8:  # Should have multiple columns for tax payment details
-                        tax_type = cleaned_row[0].lower()
+                cleaned_row = []
+                for cell in row:
+                    if cell is None:
+                        cleaned_row.append("")
+                    else:
+                        cleaned_row.append(str(cell).strip())
+                
+                # Check if this looks like a tax payment row
+                first_cell = cleaned_row[0].lower()
+                if any(tax_type in first_cell for tax_type in ['integrated', 'central', 'state', 'cess']):
+                    if len(cleaned_row) >= 8:  # Should have multiple payment columns
                         
-                        if any(x in tax_type for x in ['integrated', 'central', 'state', 'cess']):
-                            try:
-                                # Determine if this is reverse charge or other than reverse charge
-                                section_type = "reverse_charge" if "reverse" in text[max(0, text.find(tax_type)-200):text.find(tax_type)+200].lower() else "other_than_reverse"
-                                
-                                table_6_1_data.append({
-                                    "Tax Type": cleaned_row[0],
-                                    "Section": "(B) Reverse charge" if section_type == "reverse_charge" else "(A) Other than reverse charge",
-                                    "Total tax payable": clean_numeric_value(cleaned_row[1]) if len(cleaned_row) > 1 else 0.0,
-                                    "Tax paid through ITC - Integrated tax": clean_numeric_value(cleaned_row[2]) if len(cleaned_row) > 2 else 0.0,
-                                    "Tax paid through ITC - Central tax": clean_numeric_value(cleaned_row[3]) if len(cleaned_row) > 3 else 0.0,
-                                    "Tax paid through ITC - State/UT tax": clean_numeric_value(cleaned_row[4]) if len(cleaned_row) > 4 else 0.0,
-                                    "Tax paid through ITC - Cess": clean_numeric_value(cleaned_row[5]) if len(cleaned_row) > 5 else 0.0,
-                                    "Tax paid in cash": clean_numeric_value(cleaned_row[6]) if len(cleaned_row) > 6 else 0.0,
-                                    "Interest paid in cash": clean_numeric_value(cleaned_row[7]) if len(cleaned_row) > 7 else 0.0,
-                                    "Late fee paid in cash": clean_numeric_value(cleaned_row[8]) if len(cleaned_row) > 8 else 0.0
-                                })
-                            except (IndexError, ValueError):
-                                continue
+                        # Determine section type based on surrounding text
+                        section_type = determine_section_type(text, row_idx)
+                        
+                        # Extract payment data
+                        payment_data = extract_payment_data_from_row(cleaned_row)
+                        if payment_data:
+                            payment_data["Section"] = section_type
+                            table_6_1_data.append(payment_data)
     
-    if table_6_1_data:
-        return pd.DataFrame(table_6_1_data)
+    # Method 2: Extract from text patterns
+    if not table_6_1_data:
+        full_text = ""
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                full_text += page_text + "\n"
+        
+        # Find Table 6.1 section
+        table_6_1_start = full_text.find("6.1")
+        if table_6_1_start == -1:
+            table_6_1_start = full_text.find("Payment of tax")
+        
+        if table_6_1_start != -1:
+            # Extract the relevant section
+            table_6_1_section = full_text[table_6_1_start:table_6_1_start + 2000]  # Reasonable section size
+            table_6_1_data = extract_table_6_1_from_text(table_6_1_section)
+    
+    # Method 3: Create default structure if nothing found
+    if not table_6_1_data:
+        # Create default rows for all tax types
+        tax_types = ["Integrated tax", "Central tax", "State/UT tax", "Cess"]
+        sections = ["(A) Other than reverse charge", "(B) Reverse charge"]
+        
+        for section in sections:
+            for tax_type in tax_types:
+                table_6_1_data.append({
+                    "Tax Type": tax_type,
+                    "Section": section, 
+                    "Total tax payable": 0.0,
+                    "Tax paid through ITC - Integrated tax": 0.0,
+                    "Tax paid through ITC - Central tax": 0.0,
+                    "Tax paid through ITC - State/UT tax": 0.0,
+                    "Tax paid through ITC - Cess": 0.0,
+                    "Tax paid in cash": 0.0,
+                    "Interest paid in cash": 0.0,
+                    "Late fee paid in cash": 0.0
+                })
+    
+    return pd.DataFrame(table_6_1_data)
+
+def determine_section_type(text, row_position):
+    """
+    Determine if a row belongs to 'Other than reverse charge' or 'Reverse charge' section
+    """
+    # Look for section headers in the text around the row position
+    text_lower = text.lower()
+    
+    # Find positions of section markers
+    reverse_charge_pos = text_lower.find("reverse charge")
+    other_than_pos = text_lower.find("other than reverse")
+    
+    # Simple heuristic: if reverse charge appears before other_than, 
+    # and we're in the later part of the table, it's likely reverse charge
+    if reverse_charge_pos != -1 and (other_than_pos == -1 or reverse_charge_pos > other_than_pos):
+        return "(B) Reverse charge"
     else:
-        # Return empty DataFrame with correct structure
-        columns = ["Tax Type", "Section", "Total tax payable", "Tax paid through ITC - Integrated tax", 
-                  "Tax paid through ITC - Central tax", "Tax paid through ITC - State/UT tax", 
-                  "Tax paid through ITC - Cess", "Tax paid in cash", "Interest paid in cash", "Late fee paid in cash"]
-        return pd.DataFrame(columns=columns)
+        return "(A) Other than reverse charge"
+
+def extract_payment_data_from_row(row):
+    """
+    Extract payment data from a table row
+    """
+    if len(row) < 2:
+        return None
+    
+    try:
+        return {
+            "Tax Type": row[0],
+            "Total tax payable": clean_numeric_value(row[1]) if len(row) > 1 else 0.0,
+            "Tax paid through ITC - Integrated tax": clean_numeric_value(row[2]) if len(row) > 2 else 0.0,
+            "Tax paid through ITC - Central tax": clean_numeric_value(row[3]) if len(row) > 3 else 0.0,
+            "Tax paid through ITC - State/UT tax": clean_numeric_value(row[4]) if len(row) > 4 else 0.0, 
+            "Tax paid through ITC - Cess": clean_numeric_value(row[5]) if len(row) > 5 else 0.0,
+            "Tax paid in cash": clean_numeric_value(row[6]) if len(row) > 6 else 0.0,
+            "Interest paid in cash": clean_numeric_value(row[7]) if len(row) > 7 else 0.0,
+            "Late fee paid in cash": clean_numeric_value(row[8]) if len(row) > 8 else 0.0
+        }
+    except (IndexError, ValueError):
+        return None
+
+def extract_table_6_1_from_text(text):
+    """
+    Extract Table 6.1 data from plain text
+    """
+    table_6_1_data = []
+    
+    lines = text.split('\n')
+    current_section = "(A) Other than reverse charge"  # Default
+    
+    for line in lines:
+        line_lower = line.lower()
+        
+        # Check for section headers
+        if "reverse charge" in line_lower and "other than" not in line_lower:
+            current_section = "(B) Reverse charge"
+        elif "other than reverse" in line_lower:
+            current_section = "(A) Other than reverse charge"
+        
+        # Look for tax type rows
+        if any(tax_type in line_lower for tax_type in ['integrated tax', 'central tax', 'state tax', 'cess']):
+            # Extract numbers from the line
+            numbers = re.findall(r'(\d+(?:,\d{3})*(?:\.\d{2})?)', line)
+            if len(numbers) >= 2:  # At least total payable and one payment method
+                
+                # Determine tax type
+                tax_type = "Unknown"
+                if "integrated" in line_lower:
+                    tax_type = "Integrated tax"
+                elif "central" in line_lower:
+                    tax_type = "Central tax"
+                elif "state" in line_lower or "ut" in line_lower:
+                    tax_type = "State/UT tax"
+                elif "cess" in line_lower:
+                    tax_type = "Cess"
+                
+                # Convert numbers and pad to required length
+                clean_numbers = []
+                for num_str in numbers[:8]:  # Take up to 8 numbers
+                    try:
+                        clean_numbers.append(float(num_str.replace(',', '')))
+                    except ValueError:
+                        clean_numbers.append(0.0)
+                
+                # Pad with zeros if needed
+                while len(clean_numbers) < 8:
+                    clean_numbers.append(0.0)
+                
+                table_6_1_data.append({
+                    "Tax Type": tax_type,
+                    "Section": current_section,
+                    "Total tax payable": clean_numbers[0],
+                    "Tax paid through ITC - Integrated tax": clean_numbers[1], 
+                    "Tax paid through ITC - Central tax": clean_numbers[2],
+                    "Tax paid through ITC - State/UT tax": clean_numbers[3],
+                    "Tax paid through ITC - Cess": clean_numbers[4],
+                    "Tax paid in cash": clean_numbers[5],
+                    "Interest paid in cash": clean_numbers[6],
+                    "Late fee paid in cash": clean_numbers[7]
+                })
+    
+    return table_6_1_data
  
 def create_combined_gstr3b_sheet(general_df, table_3_1_df, table_4_df, table_6_1_df):
     """
