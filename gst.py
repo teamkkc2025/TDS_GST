@@ -15,7 +15,7 @@ ASSETS_DIR = Path("assets")
 ASSETS_DIR.mkdir(exist_ok=True)
  
 # Add logo to the sidebar
-logo_path = ASSETS_DIR / "GST_Logo.png"
+logo_path = "GST_Logo.png"
 if logo_path.exists():
     st.sidebar.image(str(logo_path), width=150)  # Reduced from 275 to 150
 else:
@@ -23,7 +23,7 @@ else:
 # After the logo display code in the sidebar section
 
 # Add User Manual download button below the logo
-manual_path = ASSETS_DIR / "User Manual.pdf"
+manual_path = "User Manual.pdf"
 if manual_path.exists():
     with open(manual_path, "rb") as manual_file:
         st.sidebar.download_button(
