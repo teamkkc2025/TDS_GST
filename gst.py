@@ -15,14 +15,15 @@ ASSETS_DIR = Path("assets")
 ASSETS_DIR.mkdir(exist_ok=True)
  
 # Add logo to the sidebar
-logo_path = ASSETS_DIR / "GST_Logo.png"
+logo_path = Path(__file__).parent / "kkc logo.png"
 if logo_path.exists():
-    st.sidebar.image(str(logo_path), width=150)
+    st.sidebar.image(str(logo_path), width=275)
 else:
-    st.sidebar.warning("Logo file not found. Please place 'GST_Logo.png' in the assets directory.")
+    st.sidebar.warning("Logo file not found. Please place 'kkc logo.png' in the assets directory.")
+# After the logo display code in the sidebar section
 
 # Add User Manual download button below the logo
-manual_path = ASSETS_DIR / "User Manual.pdf"
+manual_path = Path(__file__).parent /"GST_Extractor_User_Manual.pdf"
 if manual_path.exists():
     with open(manual_path, "rb") as manual_file:
         st.sidebar.download_button(
