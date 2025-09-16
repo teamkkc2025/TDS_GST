@@ -673,7 +673,7 @@ def extract_payment_data_from_row(row):
 
 def extract_table_6_1_2024(pdf):
     """
-    Final corrected Table 6.1 extraction that properly handles the actual PDF structure - 2024 version
+    Final corrected Table 6.1 extraction that properly handles the actual PDF structure
     """
     full_text = ""
     for page in pdf.pages:
@@ -699,13 +699,13 @@ def extract_table_6_1_2024(pdf):
     table_text = full_text[table_start:table_end]
     
     # Extract payment data using line-by-line approach
-    payment_data = extract_payment_data_line_by_line_2024(table_text)
+    payment_data = extract_payment_data_line_by_line_2024   (table_text)
     
     return pd.DataFrame(payment_data)
 
 def extract_payment_data_line_by_line_2024(text):
     """
-    Extract payment data line by line, properly handling the PDF format - 2024 version
+    Extract payment data line by line, properly handling the PDF format
     """
     lines = text.split('\n')
     payment_data = []
@@ -749,7 +749,7 @@ def extract_payment_data_line_by_line_2024(text):
 
 def extract_integrated_tax_row_2024(line, section):
     """
-    Extract Integrated tax row - 2024 version
+    Extract Integrated tax row
     Format: Integrated tax 1825356.00 1825356.00 0.00 0.00 - 0.00 0.00 -
     """
     numbers = re.findall(r'[\d,]+\.?\d*', line)
@@ -778,7 +778,7 @@ def extract_integrated_tax_row_2024(line, section):
 
 def extract_central_tax_row_2024(line, section):
     """
-    Extract Central tax row - CORRECTED VERSION - 2024 version
+    Extract Central tax row - CORRECTED VERSION
     Format: Central tax 16730998.00 2122418.00 14608580.00 - - 0.00 0.00 0.00
     CORRECT MAPPING: 2122418 -> ITC-Integrated, 14608580 -> ITC-Central
     """
@@ -874,7 +874,7 @@ def extract_state_tax_row_2024(line, section):
 
 def extract_cess_row_2024(line, section):
     """
-    Extract Cess row - 2024 version
+    Extract Cess row
     Format: Cess 0.00 - - - 0.00 0.00 0.00 -
     """
     numbers = re.findall(r'[\d,]+\.?\d*', line)
@@ -2219,5 +2219,3 @@ elif gst_type == "GSTR-3B" and gstr3b_year == "2025":
             filtered_table_6_1.to_excel(writer, sheet_name="Filtered Table 6.1", index=False)
         with open(output_excel, "rb") as f:
             st.download_button("Download Filtered Data", f, file_name="GSTR3B_2025_Filtered.xlsx")
-
-# ...existing code...
