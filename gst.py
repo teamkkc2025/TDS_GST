@@ -71,7 +71,7 @@ def get_state_from_gstin(gstin):
 if gst_type == "GSTR-1":
     st.title("📄 GSTR-1 Data Extraction Tool")
     st.write("Drag and Drop or Upload GSTR-1 PDFs to extract details")
-    uploaded_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="gstr1_uploader")
     if uploaded_files:
         details_list = []
         liability_list = []
