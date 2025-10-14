@@ -68,93 +68,85 @@ def get_state_from_gstin(gstin):
     state_code = gstin[:2]
     return GST_STATE_CODES.get(state_code, "Unknown")
  
-# GSTR-1 Functions
-def extract_details(pdf_path):
-    details = {"GSTIN": "", "State": "", "Legal Name": "", "Month": "", "Financial Year": ""}
-   
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                gstin_match = re.search(r'GSTIN\s*[:\-]?\s*(\d{2}[A-Z0-9]{13})', text)
-                if gstin_match:
-                    details["GSTIN"] = gstin_match.group(1)
-                    details["State"] = GST_STATE_CODES.get(details["GSTIN"][:2], "Unknown")
-               
-                legal_name_match = re.search(r'Legal name of the registered person\s*[:\-]?\s*(.*)', text)
-                if legal_name_match:
-                    details["Legal Name"] = legal_name_match.group(1).strip()
-               
-                month_match = re.search(r'Tax period\s*[:\-]?\s*(\w+)', text)
-                if month_match:
-                    details["Month"] = month_match.group(1).strip()
-               
-                fy_match = re.search(r'Financial year\s*[:\-]?\s*(\d{4}-\d{2})', text)
-                if fy_match:
-                    details["Financial Year"] = fy_match.group(1).strip()
-               
-                break
-    return details
- 
-def extract_total_liability(pdf_bytes):
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        text = "\n".join([page.get_text("text") for page in doc])
-   
-    pattern = r"Total Liability \(Outward supplies other than Reverse charge\)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)"
-    match = re.search(pattern, text)
-   
-    if match:
-        return [match.group(1), match.group(2), match.group(3), match.group(4), match.group(5)]
-    return ["Not Found", "", "", "", ""]
-
-# New function to extract Tables 4A and 4B
-def extract_tables_4A_4B(pdf_bytes):
-    tables = {
-        "4A": {
-            "description": "Taxable outward supplies made to registered persons (other than reverse charge supplies)",
-            "title": "B2B Regular",
-            "data": None
-        },
-        "4B": {
-            "description": "Taxable outward supplies made to registered persons attracting tax on reverse charge",
-            "title": "B2B Reverse charge",
-            "data": None
-        }
-    }
-    
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        text = "\n".join([page.get_text("text") for page in doc])
+if gst_type == "GSTR-1":
+    st.title("📄 GSTR-1 Data Extraction Tool")
+    st.write("Drag and Drop or Upload GSTR-1 PDFs to extract details")
+    uploaded_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True)
+    if uploaded_files:
+        details_list = []
+        liability_list = []
+        all_tables_4a_4b = []
         
-        # Extract Table 4A
-        pattern_4A = r"4A - Taxable outward supplies made to registered persons.*?Total\s+(\d+)\s+Invoice\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)"
-        match_4A = re.search(pattern_4A, text, re.DOTALL)
-        
-        if match_4A:
-            tables["4A"]["data"] = {
-                "No. of records": match_4A.group(1),
-                "Value": match_4A.group(2),
-                "Integrated Tax": match_4A.group(3),
-                "Central Tax": match_4A.group(4),
-                "State/UT Tax": match_4A.group(5),
-                "Cess": match_4A.group(6)
+        for pdf_file in uploaded_files:
+            # Extract basic details
+            details = extract_details(pdf_file)
+            details["File Name"] = pdf_file.name
+            details_list.append(details)
+            
+            # Extract total liability
+            pdf_bytes = pdf_file.read()
+            pdf_file.seek(0)  # Reset file pointer
+            liability = extract_total_liability(pdf_bytes)
+            liability_dict = {
+                "File Name": pdf_file.name,
+                "Taxable Value": liability[0],
+                "Integrated Tax": liability[1],
+                "Central Tax": liability[2],
+                "State/UT Tax": liability[3],
+                "Cess": liability[4]
             }
+            liability_list.append(liability_dict)
+            
+            # Extract Tables 4A and 4B
+            pdf_file.seek(0)  # Reset file pointer again
+            tables_4a_4b = extract_tables_4A_4B(pdf_bytes)
+            for table_key, table_info in tables_4a_4b.items():
+                if table_info["data"]:
+                    table_dict = {
+                        "File Name": pdf_file.name,
+                        "Table": table_key,
+                        "Description": table_info["description"],
+                        **table_info["data"]
+                    }
+                    all_tables_4a_4b.append(table_dict)
         
-        # Extract Table 4B
-        pattern_4B = r"4B - Taxable outward supplies made to registered persons attracting tax on reverse charge.*?Total\s+(\d+)\s+Invoice\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)"
-        match_4B = re.search(pattern_4B, text, re.DOTALL)
+        # Display extracted data
+        if details_list:
+            st.subheader("📋 General Details")
+            general_df = pd.DataFrame(details_list)
+            st.dataframe(general_df, use_container_width=True)
         
-        if match_4B:
-            tables["4B"]["data"] = {
-                "No. of records": match_4B.group(1),
-                "Value": match_4B.group(2),
-                "Integrated Tax": match_4B.group(3),
-                "Central Tax": match_4B.group(4),
-                "State/UT Tax": match_4B.group(5),
-                "Cess": match_4B.group(6)
-            }
-    
-    return tables
-
+        if liability_list:
+            st.subheader("💰 Total Liability (Outward Supplies)")
+            liability_df = pd.DataFrame(liability_list)
+            st.dataframe(liability_df, use_container_width=True)
+        
+        if all_tables_4a_4b:
+            st.subheader("📊 Tables 4A & 4B - B2B Supplies")
+            tables_4a_4b_df = pd.DataFrame(all_tables_4a_4b)
+            st.dataframe(tables_4a_4b_df, use_container_width=True)
+        
+        # Create Excel file with all data
+        if details_list:
+            output_excel = "GSTR1_Extracted_Data.xlsx"
+            with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+                general_df.to_excel(writer, sheet_name="General Details", index=False)
+                if liability_list:
+                    liability_df.to_excel(writer, sheet_name="Total Liability", index=False)
+                if all_tables_4a_4b:
+                    tables_4a_4b_df.to_excel(writer, sheet_name="Tables 4A & 4B", index=False)
+            
+            # Download button
+            with open(output_excel, "rb") as f:
+                st.download_button(
+                    label="📥 Download GSTR-1 Extracted Data",
+                    data=f,
+                    file_name="GSTR1_Extracted_Data.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("No details extracted from uploaded files.")
 
 # Common GSTR-3B Functions
 def clean_numeric_value(value):
