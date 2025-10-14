@@ -2050,23 +2050,131 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
 # ...existing code...
 
 # MAIN APPLICATION FLOW (fix: ensure all interfaces show up and filtering works)
-
+# Main Application Logic
 if gst_type == "GSTR-1":
     st.title("📄 GSTR-1 Data Extraction Tool")
     st.write("Drag and Drop or Upload GSTR-1 PDFs to extract details")
+   
     uploaded_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True)
+   
     if uploaded_files:
-        # Example extraction and display (implement as needed)
-        details_list = []
-        for pdf_file in uploaded_files:
-            details = extract_details(pdf_file)
-            details["File Name"] = pdf_file.name
-            details_list.append(details)
-        if details_list:
-            st.subheader("Extracted Details")
-            st.dataframe(pd.DataFrame(details_list))
-        else:
-            st.info("No details extracted from uploaded files.")
+        data = []
+        table_4A_data = []
+        table_4B_data = []
+        
+        for uploaded_file in uploaded_files:
+            pdf_bytes = uploaded_file.read()
+            details = extract_details(uploaded_file)
+            total_liability = extract_total_liability(pdf_bytes)
+            data.append([uploaded_file.name] + list(details.values()) + total_liability)
+            
+            # Extract Tables 4A and 4B
+            tables_4A_4B = extract_tables_4A_4B(pdf_bytes)
+            
+            # Process Table 4A
+            if tables_4A_4B["4A"]["data"]:
+                table_4A_data.append([
+                    uploaded_file.name,
+                    details["GSTIN"],
+                    details["State"],  # Added State column here
+                    details["Legal Name"],
+                    details["Month"],
+                    details["Financial Year"],
+                    tables_4A_4B["4A"]["data"]["No. of records"],
+                    tables_4A_4B["4A"]["data"]["Value"],
+                    tables_4A_4B["4A"]["data"]["Integrated Tax"],
+                    tables_4A_4B["4A"]["data"]["Central Tax"],
+                    tables_4A_4B["4A"]["data"]["State/UT Tax"],
+                    tables_4A_4B["4A"]["data"]["Cess"]
+                ])
+            
+            # Process Table 4B
+            if tables_4A_4B["4B"]["data"]:
+                table_4B_data.append([
+                    uploaded_file.name,
+                    details["GSTIN"],
+                    details["State"],  # Added State column here
+                    details["Legal Name"],
+                    details["Month"],
+                    details["Financial Year"],
+                    tables_4A_4B["4B"]["data"]["No. of records"],
+                    tables_4A_4B["4B"]["data"]["Value"],
+                    tables_4A_4B["4B"]["data"]["Integrated Tax"],
+                    tables_4A_4B["4B"]["data"]["Central Tax"],
+                    tables_4A_4B["4B"]["data"]["State/UT Tax"],
+                    tables_4A_4B["4B"]["data"]["Cess"]
+                ])
+       
+        columns = ["File Name", "GSTIN", "State", "Legal Name", "Month", "Financial Year", "Taxable Value", "IGST", "CGST", "SGST", "Cess"]
+        df = pd.DataFrame(data, columns=columns)
+        
+        # Create DataFrames for Tables 4A and 4B
+        columns_4AB = ["File Name", "GSTIN", "State", "Legal Name", "Month", "Financial Year", "No. of records", "Value", "Integrated Tax", "Central Tax", "State/UT Tax", "Cess"]
+        df_4A = pd.DataFrame(table_4A_data, columns=columns_4AB)
+        df_4B = pd.DataFrame(table_4B_data, columns=columns_4AB)
+       
+        st.write("### Total Liability (Outward supplies other than Reverse charge) ")
+        st.dataframe(df)
+
+       
+        def multiselect_with_select_all(label, options):
+            selected = st.multiselect(label, ["Select All"] + options, default=["Select All"])
+            return options if "Select All" in selected else selected
+       
+        selected_month = multiselect_with_select_all("Filter by Month", df["Month"].unique().tolist())
+        selected_state = multiselect_with_select_all("Filter by State", df["State"].unique().tolist())
+        selected_gstin = multiselect_with_select_all("Filter by GSTIN", df["GSTIN"].unique().tolist())
+        selected_legal_name = multiselect_with_select_all("Filter by Legal Name", df["Legal Name"].unique().tolist())
+        selected_year = multiselect_with_select_all("Filter by Financial Year", df["Financial Year"].unique().tolist())
+       
+        filtered_df = df
+        filtered_df_4A = df_4A
+        filtered_df_4B = df_4B
+        
+        if selected_month:
+            filtered_df = filtered_df[filtered_df["Month"].isin(selected_month)]
+            filtered_df_4A = filtered_df_4A[filtered_df_4A["Month"].isin(selected_month)]
+            filtered_df_4B = filtered_df_4B[filtered_df_4B["Month"].isin(selected_month)]
+            
+        if selected_state:
+            filtered_df = filtered_df[filtered_df["State"].isin(selected_state)]
+            filtered_df_4A = filtered_df_4A[filtered_df_4A["State"].isin(selected_state)]
+            filtered_df_4B = filtered_df_4B[filtered_df_4B["State"].isin(selected_state)]
+            
+        if selected_gstin:
+            filtered_df = filtered_df[filtered_df["GSTIN"].isin(selected_gstin)]
+            filtered_df_4A = filtered_df_4A[filtered_df_4A["GSTIN"].isin(selected_gstin)]
+            filtered_df_4B = filtered_df_4B[filtered_df_4B["GSTIN"].isin(selected_gstin)]
+            
+        if selected_legal_name:
+            filtered_df = filtered_df[filtered_df["Legal Name"].isin(selected_legal_name)]
+            filtered_df_4A = filtered_df_4A[filtered_df_4A["Legal Name"].isin(selected_legal_name)]
+            filtered_df_4B = filtered_df_4B[filtered_df_4B["Legal Name"].isin(selected_legal_name)]
+            
+        if selected_year:
+            filtered_df = filtered_df[filtered_df["Financial Year"].isin(selected_year)]
+            filtered_df_4A = filtered_df_4A[filtered_df_4A["Financial Year"].isin(selected_year)]
+            filtered_df_4B = filtered_df_4B[filtered_df_4B["Financial Year"].isin(selected_year)]
+       
+        st.write("### Filtered Results - Total Liability")
+        st.dataframe(filtered_df)
+        
+        st.write("### Filtered Results - Table 4A")
+        st.dataframe(filtered_df_4A)
+        
+        st.write("### Filtered Results - Table 4B")
+        st.dataframe(filtered_df_4B)
+       
+        # Add Excel download functionality for GSTR-1
+        output_excel = "GSTR1_Filtered.xlsx"
+        with pd.ExcelWriter(output_excel) as writer:
+            # Only include filtered data in the Excel file
+            filtered_df.to_excel(writer, sheet_name="Filtered Total Liability", index=False)
+            filtered_df_4A.to_excel(writer, sheet_name="Filtered Table 4A", index=False)
+            filtered_df_4B.to_excel(writer, sheet_name="Filtered Table 4B", index=False)
+       
+        with open(output_excel, "rb") as f:
+            st.download_button("Download Filtered Data as Excel", f, file_name="GSTR1_Filtered.xlsx")
 
 elif gst_type == "GSTR-3B" and gstr3b_year == "2024":
     st.title("📄 GSTR-3B Data Extraction Tool (2024)")
