@@ -154,6 +154,28 @@ def extract_tables_4A_4B(pdf_bytes):
             }
     
     return tables
+ # ✅ After finishing extraction for all uploaded GSTR-1 files
+if details_list:  # or replace with your actual list name (e.g., gstr1_data)
+    df = pd.DataFrame(details_list)
+
+    # --- 📊 Preview in Streamlit ---
+    st.subheader("📊 Extracted GSTR-1 Data Preview")
+    st.dataframe(df, use_container_width=True)
+
+    # --- 📥 Download Excel ---
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="GSTR-1 Summary")
+
+    st.download_button(
+        label="📥 Download Extracted GSTR-1 Data (Excel)",
+        data=output.getvalue(),
+        file_name="GSTR1_Extracted_Data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+else:
+    st.info("No details extracted from uploaded files.")
 
 # Common GSTR-3B Functions
 def clean_numeric_value(value):
