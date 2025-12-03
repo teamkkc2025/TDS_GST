@@ -965,19 +965,20 @@ def create_combined_gstr3b_sheet_2024(general_df, table_3_1_df, table_4_df, tabl
         header_row["Description"] = "File Information"
         rows.append(header_row)
        
-        # Add 3.1 data
+        # Add 3.1 data  ✅ FIXED COLUMN NAMES
         file_table_3_1 = table_3_1_df[table_3_1_df["File Name"] == file_name]
         if not file_table_3_1.empty:
             for _, row in file_table_3_1.iterrows():
                 data_row = base_row.copy()
                 data_row["Data Type"] = "Table 3.1"
                 data_row["Description"] = row.get("Nature of Supplies", "")
-                data_row["Total Taxable Value"] = row.get("Total taxable value", 0.0)
-                data_row["Integrated Tax"] = row.get("Integrated tax", 0.0)
-                data_row["Central Tax"] = row.get("Central tax", 0.0)
-                data_row["State/UT Tax"] = row.get("State/UT tax", 0.0)
+                data_row["Total Taxable Value"] = row.get("Total Taxable Value", 0.0)
+                data_row["Integrated Tax"] = row.get("Integrated Tax", 0.0)
+                data_row["Central Tax"] = row.get("Central Tax", 0.0)
+                data_row["State/UT Tax"] = row.get("State/UT Tax", 0.0)
                 data_row["Cess"] = row.get("Cess", 0.0)
                 rows.append(data_row)
+
        
         # Add Table 4 data
         file_table_4 = table_4_df[table_4_df["File Name"] == file_name]
@@ -1463,7 +1464,7 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
         header_row["Description"] = "File Information"
         rows.append(header_row)
        
-        # Table 3.1 data  ✅ FIXED
+        # Table 3.1 data  ✅ FIXED COLUMN NAMES
         file_table_3_1 = table_3_1_df[table_3_1_df["File Name"] == file_name]
         if not file_table_3_1.empty:
             for _, row in file_table_3_1.iterrows():
@@ -1994,19 +1995,20 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
         header_row["Description"] = "File Information"
         rows.append(header_row)
        
-        # Table 3.1 data
+        # Table 3.1 data  ✅ FIXED
         file_table_3_1 = table_3_1_df[table_3_1_df["File Name"] == file_name]
         if not file_table_3_1.empty:
             for _, row in file_table_3_1.iterrows():
                 data_row = base_row.copy()
                 data_row["Data Type"] = "Table 3.1"
                 data_row["Description"] = row.get("Nature of Supplies", "")
-                data_row["Total Taxable Value"] = row.get("Total taxable value", 0.0)
-                data_row["Integrated Tax"] = row.get("Integrated tax", 0.0)
-                data_row["Central Tax"] = row.get("Central tax", 0.0)
-                data_row["State/UT Tax"] = row.get("State/UT tax", 0.0)
+                data_row["Total Taxable Value"] = row.get("Total Taxable Value", 0.0)
+                data_row["Integrated Tax"] = row.get("Integrated Tax", 0.0)
+                data_row["Central Tax"] = row.get("Central Tax", 0.0)
+                data_row["State/UT Tax"] = row.get("State/UT Tax", 0.0)
                 data_row["Cess"] = row.get("Cess", 0.0)
                 rows.append(data_row)
+
        
         # Table 4 data
         file_table_4 = table_4_df[table_4_df["File Name"] == file_name]
