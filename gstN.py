@@ -4,7 +4,26 @@ import pdfplumber
 import re
 import pandas as pd
 from pathlib import Path
- 
+from datetime import datetime
+import calendar
+
+
+from datetime import datetime
+import calendar
+
+def derive_period_from_date(date_str: str) -> str | None:
+    """
+    Derive GSTR-3B period month directly from ARN date.
+    Example: 19/09/2025 -> 'September'
+    """
+    if not date_str or not isinstance(date_str, str):
+        return None
+    try:
+        d = datetime.strptime(date_str.strip(), "%d/%m/%Y")
+        return calendar.month_name[d.month]   # <-- same month, not previous
+    except Exception:
+        return None
+
 # Set Streamlit page layout
 st.set_page_config(layout="wide")
  
@@ -1947,20 +1966,33 @@ def extract_cess_row_updated_2025(line, section):
 
 def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, table_6_1_df):
     """
-    Updated combined sheet creation with proper Table 6.1 structure - 2025 version
+    Combined GSTR-3B sheet for 2025.
+    Correctly maps Date/Period by joining on File Name (not DataFrame index).
     """
+
     rows = []
-    unique_files = set(table_3_1_df["File Name"].unique()) | set(table_4_df["File Name"].unique()) | set(table_6_1_df["File Name"].unique())
-   
-    for idx, file_name in enumerate(unique_files):
-        # Get general details
-        file_general_details = general_df[general_df.index == idx].to_dict(orient='records')
-        if file_general_details:
-            general_info = file_general_details[0]
+
+    # ✅ Drive file list from general_df itself
+    if "File Name" not in general_df.columns:
+        raise ValueError("general_df must contain a 'File Name' column")
+
+    unique_files = general_df["File Name"].dropna().unique().tolist()
+
+    for file_name in unique_files:
+        # ✅ Safely fetch general info for this file
+        general_rows = general_df[general_df["File Name"] == file_name]
+        if not general_rows.empty:
+            general_info = general_rows.iloc[0].to_dict()
         else:
-            general_info = {"GSTIN": "Unknown", "Legal Name": "Unknown", "Date": "Unknown",
-                           "Financial Year": "Unknown", "Period": "Unknown", "State": "Unknown"}
-       
+            general_info = {
+                "GSTIN": "Unknown",
+                "State": "Unknown",
+                "Legal Name": "Unknown",
+                "Date": "Unknown",
+                "Financial Year": "Unknown",
+                "Period": "Unknown",
+            }
+
         base_row = {
             "File Name": file_name,
             "GSTIN": general_info.get("GSTIN", "Unknown"),
@@ -1969,9 +2001,11 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
             "Date": general_info.get("Date", "Unknown"),
             "Financial Year": general_info.get("Financial Year", "Unknown"),
             "Period": general_info.get("Period", "Unknown"),
+
             "Data Type": "",
             "Section": "",
             "Description": "",
+
             "Tax Payable": 0.0,
             "Adjustment of Negative Liability": 0.0,
             "Net Tax Payable": 0.0,
@@ -1986,16 +2020,16 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
             "Tax Paid Through ITC - Cess": 0.0,
             "Tax Paid in Cash": 0.0,
             "Interest Paid in Cash": 0.0,
-            "Late Fee Paid in Cash": 0.0
+            "Late Fee Paid in Cash": 0.0,
         }
-       
-        # File header
+
+        # --- Header row per file ---
         header_row = base_row.copy()
         header_row["Data Type"] = "FILE INFO"
         header_row["Description"] = "File Information"
         rows.append(header_row)
-       
-        # Table 3.1 data  ✅ FIXED
+
+        # --- Table 3.1 ---
         file_table_3_1 = table_3_1_df[table_3_1_df["File Name"] == file_name]
         if not file_table_3_1.empty:
             for _, row in file_table_3_1.iterrows():
@@ -2009,8 +2043,7 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
                 data_row["Cess"] = row.get("Cess", 0.0)
                 rows.append(data_row)
 
-       
-        # Table 4 data
+        # --- Table 4 ---
         file_table_4 = table_4_df[table_4_df["File Name"] == file_name]
         if not file_table_4.empty:
             for _, row in file_table_4.iterrows():
@@ -2022,8 +2055,8 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
                 data_row["State/UT Tax"] = row.get("State/UT tax", 0.0)
                 data_row["Cess"] = row.get("Cess", 0.0)
                 rows.append(data_row)
-       
-        # Table 6.1 data - Updated structure for 2025
+
+        # --- Table 6.1 ---
         file_table_6_1 = table_6_1_df[table_6_1_df["File Name"] == file_name]
         if not file_table_6_1.empty:
             for _, row in file_table_6_1.iterrows():
@@ -2042,13 +2075,15 @@ def create_combined_gstr3b_sheet_2025(general_df, table_3_1_df, table_4_df, tabl
                 data_row["Interest Paid in Cash"] = row.get("Interest paid in cash", 0.0)
                 data_row["Late Fee Paid in Cash"] = row.get("Late fee paid in cash", 0.0)
                 rows.append(data_row)
-       
-        # Separator
+
+        # --- Separator row ---
         separator_row = {k: "" for k in base_row.keys()}
         separator_row["Description"] = "----------------------"
         rows.append(separator_row)
-   
+
     return pd.DataFrame(rows)
+
+
 
 # ...existing code...
 
@@ -2204,6 +2239,13 @@ elif gst_type == "GSTR-3B" and gstr3b_year == "2024":
                 all_table_6_1.append(table_6_1)
         st.subheader("General Details")
         general_df = pd.DataFrame(all_general_details)
+        general_df["Derived Period"] = general_df["Date"].apply(derive_period_from_date)
+
+        # Overwrite Period with derived month
+        general_df["Period"] = general_df["Derived Period"]
+        general_df.drop(columns=["Derived Period"], inplace=True)
+
+
         st.dataframe(general_df)
         final_table_3_1 = pd.concat(all_table_3_1, ignore_index=True)
         final_table_4 = pd.concat(all_table_4, ignore_index=True)
@@ -2268,18 +2310,26 @@ elif gst_type == "GSTR-3B" and gstr3b_year == "2025":
             with pdfplumber.open(pdf_file) as pdf:
                 full_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
                 general_details = extract_general_details(full_text)
+                general_details["File Name"] = pdf_file.name      # ✅ critical
                 all_general_details.append(general_details)
+
                 table_3_1 = extract_table_3_1(pdf)
                 table_3_1["File Name"] = pdf_file.name
                 all_table_3_1.append(table_3_1)
+
                 table_4 = extract_table_4_2025(pdf)
                 table_4["File Name"] = pdf_file.name
                 all_table_4.append(table_4)
+
                 table_6_1 = extract_table_6_1_2025(pdf)
                 table_6_1["File Name"] = pdf_file.name
                 all_table_6_1.append(table_6_1)
+
         st.subheader("General Details")
         general_df = pd.DataFrame(all_general_details)
+        # columns include: File Name, GSTIN, State, Legal Name, Date, Financial Year, Period
+
+
         st.dataframe(general_df)
         final_table_3_1 = pd.concat(all_table_3_1, ignore_index=True)
         final_table_4 = pd.concat(all_table_4, ignore_index=True)
